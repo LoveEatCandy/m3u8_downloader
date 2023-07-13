@@ -19,7 +19,6 @@ HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
     "Connection": "keep-alive",
-    "Origin": "https://player.yunbtv.cc",
     "sec-ch-ua": '"Chromium";v="112", "Microsoft Edge";v="112", "Not:A-Brand";v="99"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
@@ -49,7 +48,9 @@ def download_ts(url, file_path, m3u8_key):
             key_url = (
                 m3u8_key.uri
                 if m3u8_key.uri.startswith("http")
-                else "".join([parser.scheme, "://", parser.hostname, m3u8_key.uri])
+                else os.path.join(
+                    [f"{parser.scheme}://", parser.hostname, m3u8_key.uri]
+                )
             )
             key = session.get(key_url, timeout=10).content
             cipher = AES.new(key, AES.MODE_CBC, IV=None)
@@ -67,8 +68,6 @@ def download_hls_and_convert_to_mp4(
     urls, max_workers: int = 32, auto_clean: bool = True
 ):
     for name, url in urls.items():
-        parser = parse.urlparse(url)
-        hostname = parser.hostname
         current_tmp_dir = os.path.join(TMP_DIR, name)
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             os.makedirs(current_tmp_dir, exist_ok=True)
@@ -76,7 +75,7 @@ def download_hls_and_convert_to_mp4(
             for index, segment in enumerate(m3u8_obj.segments, start=1):
                 ts_url = segment.uri
                 if not ts_url.startswith("http"):
-                    ts_url = "".join([parser.scheme, "://", hostname, ts_url])
+                    ts_url = url.rsplit("/", 1)[0] + "/" + ts_url
                 ts_file_path = os.path.join(current_tmp_dir, f"{index}.ts".zfill(8))
                 executor.submit(download_ts, ts_url, ts_file_path, m3u8_obj.keys[0])
 
@@ -88,16 +87,17 @@ def download_hls_and_convert_to_mp4(
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
         video_path = os.path.join(VIDEO_DIR, f"{name}.mp4")
-        subprocess.run(
+        p = subprocess.run(
             ["ffmpeg", "-i", merged_ts_path, "-map", "0", "-c", "copy", video_path]
         )
-        if auto_clean:
+        if auto_clean and p.returncode == 0:
             shutil.rmtree(current_tmp_dir)
             os.unlink(merged_ts_path)
 
 
 if __name__ == "__main__":
     urls = {
-        "9": "https://vod11.bdzybf7.com/20230408/MBf8eBAS/2000kb/hls/index.m3u8",
+        "37": "https://vip.lz-cdn12.com/20230713/8822_8d309244/2000k/hls/mixed.m3u8",
+        "38": "https://vip.lz-cdn12.com/20230713/8823_3324c6d2/2000k/hls/mixed.m3u8",
     }
     download_hls_and_convert_to_mp4(urls, max_workers=32)
